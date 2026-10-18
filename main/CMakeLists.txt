@@ -23,7 +23,27 @@ INCLUDE_DIRS 			"."
 						"../westa_op"
 						"../westa_op/bosch_bmp280"
 						"../../esp32_common/comm"
-						)
+						
+REQUIRES
+						console
+						esp_driver_uart
+						esp_driver_rmt
+						esp_driver_gpio	
+        				esp_driver_ledc
+						esp_driver_gptimer
+						esp_driver_i2c
+						esp_http_client
+						esp_timer
+						app_update
+						spi_flash
+						nvs_flash
+						freertos
+						spiffs
+						mqtt
+						esp_netif
+						esp_wifi
+						esp_pm		
+						)				
 target_link_libraries(${COMPONENT_LIB} INTERFACE "-ucommon_app_desc")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     COMMON_REPO_VERSION="${COMMON_REPO_VERSION}")

@@ -16,12 +16,12 @@
 #include "spi_flash_mmap.h"
 #include "esp_spiffs.h"
 #include "esp_vfs_dev.h"
-#include "esp_vfs_fat.h"
+//#include "esp_vfs_fat.h"
 #include "esp_log.h"
 #include "esp_console.h"
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "wear_levelling.h"
+//#include "wear_levelling.h"
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include "linenoise/linenoise.h"
@@ -88,7 +88,7 @@ void app_main(void)
 	memset(&bpart_desc, 0, sizeof(bpart_desc));
 	const esp_partition_t *bootp = esp_ota_get_boot_partition();
 	esp_ota_get_partition_description(bootp, &bpart_desc);
-
+	ESP_LOGI(TAG, "--------------------------------------%s", bpart_desc.project_name);
 	gpio_install_isr_service(0);
 
 	restart_in_progress = 0;

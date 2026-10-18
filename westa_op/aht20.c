@@ -25,7 +25,7 @@
 //#include "esp_spi_flash.h"
 #include "esp_spiffs.h"
 #include "esp_vfs_dev.h"
-#include "esp_vfs_fat.h"
+//#include "esp_vfs_fat.h"
 #include "driver/gptimer.h"
 #include "mqtt_ctrl.h"
 #include "common_defines.h"
