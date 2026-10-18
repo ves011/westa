@@ -40,6 +40,7 @@
 #include "mqtt_ctrl.h"
 #include "ntp_sync.h"
 #include "esp_ota_ops.h"
+#include "crash_handler.h"
 #include "westaop.h"
 
 #define TAG "ctrl_dev"
@@ -82,6 +83,12 @@ static void initialize_nvs(void)
 
 void app_main(void)
 	{
+	checkLastCrash();
+	g_crash->boot_count++;
+	memset(&bpart_desc, 0, sizeof(bpart_desc));
+	const esp_partition_t *bootp = esp_ota_get_boot_partition();
+	esp_ota_get_partition_description(bootp, &bpart_desc);
+
 	gpio_install_isr_service(0);
 
 	restart_in_progress = 0;

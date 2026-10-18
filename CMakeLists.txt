@@ -3,7 +3,9 @@
 cmake_minimum_required(VERSION 3.5)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-get_filename_component(ProjectId ${CMAKE_CURRENT_LIST_DIR} NAME)
+
+idf_build_set_property(MINIMAL_BUILD ON APPEND)
+idf_build_set_property(LINK_OPTIONS "-Wl,--wrap=esp_panic_handler" APPEND)
 
 set(COMMON_REPO_DIR "${CMAKE_CURRENT_LIST_DIR}/esp32_common")
 
