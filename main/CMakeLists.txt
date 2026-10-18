@@ -15,7 +15,6 @@ SRCS 					"main.c"
 						"../westa_op/aht20.c"
 						
 INCLUDE_DIRS 			"."
-						"../certs"
 						"../../esp32_common"
     					"../../esp32_common/cmds"
     					"../../esp32_common/tcp"

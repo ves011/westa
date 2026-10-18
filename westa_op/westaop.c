@@ -11,7 +11,6 @@
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_log.h"
-//#include "driver/i2c.h"
 #include "driver/i2c_master.h"
 #include "esp_console.h"
 #include "argtable3/argtable3.h"
@@ -19,28 +18,19 @@
 #include "freertos/projdefs.h"
 #include "hal/gpio_types.h"
 #include "math.h"
-//#include "errno.h"
-//#include "esp_netif.h"
 #include "driver/gptimer.h"
-//#include "mqtt_client.h"
+#include "nvs.h"
 #include "sys/stat.h"
 #include "common_defines.h"
-#include "../main/project_specific.h"
-//#include "external_defs.h"
+#include "project_specific.h"
 #include "mqtt_ctrl.h"
-//#include "utils.h"
 #include "ntp_sync.h"
 #include "i2ccomm.h"
 #include "westaop.h"
-
-//#include "../../esp32_common/gpios.h"
 #include "bmp2_defs.h"
 #include "bmp2.h"
 #include "dht22.h"
 #include "aht20.h"
-
-
-#if ACTIVE_CONTROLLER == WESTA_CONTROLLER
 
 struct
 	{
@@ -59,22 +49,21 @@ static uint8_t osrs_t, osrs_p;
 static QueueHandle_t westa_cmd_queue = NULL;
 
 static const char *TAG = "WESTA OP";
-static double psl;
-static double hmp;
-static double pnorm;
-static double ml_b;
+
+static double psl, hmp, pnorm, ml_b;
 static int sq_cmp;
+
+
 static i2c_master_dev_handle_t aht_handle;
 static i2c_master_dev_handle_t bmp_handle_0;
 static i2c_master_dev_handle_t bmp_handle_1;
 
 static int bmp_init(i2c_master_dev_handle_t bmp_handle);
+/*
 static int rw_rgcal(int rw, pgcal_t *param_val);
 static int rw_pnorm(int rw, pnorm_param_t *param_val);
-
-// no need sice data is saved in the remote database
-//SemaphoreHandle_t pthfile_mutex;
-
+*/
+static void get_westa_nvsconf();
 static int get_bmp_data(int idx, bmp_data_t *bmpdata)
 	{
 	int res = BMP2_E_COM_FAIL;
@@ -94,10 +83,7 @@ static int get_bmp_data(int idx, bmp_data_t *bmpdata)
 		if(bmpdev[idx].power_mode == BMP2_POWERMODE_FORCED)
 			{
 			while((res = bmp2_get_status(&bmps, &bmpdev[idx]) == BMP2_OK) && bmps.measuring == 1)
-				{
 				vTaskDelay(pdMS_TO_TICKS(10));
-				//ESP_LOGI(TAG, "bmp280 busy");
-				}
 			}
 		res = bmp2_get_sensor_data(bmpdata, &bmpdev[idx]);
 		bmpdata->pressure /= 100.;
@@ -220,7 +206,7 @@ int do_westaop(int argc, char **argv)
         arg_print_errors(stderr, westaop_args.end, argv[0]);
         return 1;
     	}
-    ESP_LOGI(TAG, "dst: %s, op: %s", westaop_args.dst->sval[0], westaop_args.op->sval[0]);
+    //ESP_LOGI(TAG, "dst: %s, op: %s", westaop_args.dst->sval[0], westaop_args.op->sval[0]);
     if(strstr(westaop_args.dst->sval[0], "bmp"))
     	{
 		if(!strcmp(westaop_args.dst->sval[0], "bmp0"))
@@ -264,58 +250,7 @@ int do_westaop(int argc, char **argv)
 	   			else
 	   				ESP_LOGI(TAG, "Could not read configuration. err = %d", res);
 	   			}
-	   		}
-		else if(!strcmp(westaop_args.op->sval[0], "pset"))
-   			{
-   			pnorm_param_t param = {0, 0};
-   			char buf[100];
-   			if(westaop_args.os_mode->count == 0) // no arguments just display values
-   				{
-				if(rw_pnorm(PARAM_READ, &param) == ESP_OK)
-   				//if(rw_params(PARAM_READ, PARAM_PNORM, &param) == ESP_OK)
-					{
-					ESP_LOGI(TAG, "pnorm calculation parameters: psl = %.3lf, hmp = %.3lf", param.psl, param.hmp);
-					sprintf(buf, "BMP\1 1\1%.3lf\1%.3lf", param.psl, param.hmp);
-					}
-				else
-					{
-					ESP_LOGI(TAG, "Error reading parameters pnorm\nReverting to default values: psl = %.3lf, hmp = %.3lf", DEFAULT_PSL, DEFAULT_ELEVATION);
-					sprintf(buf, "BMP\1 0\1%.3lf\1%.3lf", DEFAULT_PSL, DEFAULT_ELEVATION);
-					}
-				publish_topic(TOPIC_STATE, buf, 0, 0);
-   				}
-   			else
-   				{
-   				if(westaop_args.filter->count == 0)
-   					{
-   					ESP_LOGI(TAG, "You need to provide both arguments for <pset>");
-   					}
-   				else
-   					{
-   					param.psl = westaop_args.os_mode->ival[0] / 1000.;
-   					param.hmp = westaop_args.filter->ival[0] / 100.;
-   					if(param.psl <= 0. || param.hmp <= 0.)
-   						ESP_LOGI(TAG, "parameters error: %.3lf %.2lf", param.psl, param.hmp);
-   					else
-   						{
-						if(rw_pnorm(PARAM_WRITE, &param) == ESP_OK)
-   						//if(rw_params(PARAM_WRITE, PARAM_PNORM, &param) == ESP_OK)
-							{
-							psl = param.psl;
-							hmp = param.hmp;
-							pnorm = psl * pow((1 - hmp/44330), 5.255);
-							sprintf(buf, "BMP\1 1\1%.3lf\1%.3lf\1%.3lf", param.psl, param.hmp, pnorm);
-							}
-						else
-							{
-							ESP_LOGI(TAG, "Eror updating pnorm parameters.\nKeeping old values: %.3lf, %.3lf", psl, hmp);
-							sprintf(buf, "BMP\1 0\1%.3lf\1%.3lf", psl, hmp);
-							}
-						publish_topic(TOPIC_STATE, buf, 0, 0);
-   						}
-   					}
-   				}
-   			}
+			}
     	}
     else if(!strcmp(westaop_args.dst->sval[0], "dht"))
     	{
@@ -341,33 +276,42 @@ int do_westaop(int argc, char **argv)
     			get_aht_data(&ahtdata);
     		}
 		}
-	else if(!strcmp(westaop_args.dst->sval[0], "rg"))
-    	{
-    	if(!strcmp(westaop_args.op->sval[0], "cal"))
-    		{
-			pgcal_t rgcal;
-			if(argc == 3) // no parameter just read the calibration
+	else if(!strcmp(westaop_args.dst->sval[0], "nvs"))
+		{
+		if(strcmp(westaop_args.op->sval[0], "show") == 0) // display nvs content which is already fetched by previous call to get_westa_nvsconf() 
+			{
+			ESP_LOGI(TAG, "namesapce: %s", WESTANS);
+			ESP_LOGI(TAG, " -- key: %s value: %d", MLB, (int)(ml_b * 10));
+			ESP_LOGI(TAG, " -- key: %s value: %d", FSQCM, sq_cmp);
+			ESP_LOGI(TAG, " -- key: %s value: %d", SEALEVELP, (int)(psl * 10));
+			ESP_LOGI(TAG, " -- key: %s value: %d", ELEVATION, (int)(hmp * 10));
+			}
+		else
+			{
+			if(strcmp(westaop_args.op->sval[0], MLB) == 0 ||
+				strcmp(westaop_args.op->sval[0], FSQCM) == 0 ||
+				strcmp(westaop_args.op->sval[0], SEALEVELP) == 0 ||
+				strcmp(westaop_args.op->sval[0], ELEVATION) == 0)
 				{
-				if(rw_rgcal(PARAM_READ, &rgcal) == ESP_OK)
-				//if(rw_params(PARAM_READ, PARAM_RGCAL, &rgcal) == ESP_OK)
-					ESP_LOGI(TAG, "rg cal: %.1lf ml/bucket  %d cmp area", rgcal.mlb, rgcal.sqcmp);	
-				}
-			else
-				{
-				if(westaop_args.os_mode->count == 1)
+				int err;
+				nvs_handle handle;
+				if((err = nvs_open(WESTANS, NVS_READWRITE, &handle)) == ESP_OK)
 					{
-					rgcal.mlb = westaop_args.os_mode->ival[0] / 10.;
-					rgcal.sqcmp = westaop_args.filter->ival[0];
-					if(rw_rgcal(PARAM_WRITE, &rgcal) == ESP_OK)
-					//if(rw_params(PARAM_WRITE, PARAM_RGCAL, &rgcal) == ESP_OK)
+					err = nvs_set_i32(handle, westaop_args.op->sval[0], westaop_args.os_mode->ival[0]);
+					if(err == ESP_OK)
 						{
-						ml_b = rgcal.mlb;
-						sq_cmp = rgcal.sqcmp;
+						nvs_commit(handle);
+						ESP_LOGI(TAG, "%s set to %d", westaop_args.op->sval[0], westaop_args.os_mode->ival[0]);
+						ESP_LOGI(TAG, " --> reboot to make change effective");
 						}
+					else
+						ESP_LOGI(TAG, "fail to set %s key (%d)", westaop_args.op->sval[0], err);
 					}
 				}
+			else
+				ESP_LOGI(TAG, "unknown key: %s", westaop_args.op->sval[0]);
 			}
-    	}
+		}
     else
     	{
     	ESP_LOGI(TAG, "Unknown operand: %s", westaop_args.dst->sval[0]);
@@ -380,7 +324,7 @@ static bool IRAM_ATTR poll_timer_callback(gptimer_handle_t c_timer, const gptime
 	{
 	msg_t msg;
     BaseType_t high_task_awoken = pdFALSE;
-    msg.source = 1;
+    msg.source = MSG_TIMER;
 	xQueueSendFromISR(westa_cmd_queue, &msg, NULL);
     return high_task_awoken == pdTRUE; // return whether we need to yield at the end of ISR
 	}
@@ -413,7 +357,7 @@ static void IRAM_ATTR rg_isr_handler(void* arg)
     //uint32_t gpio_num = (uint32_t) arg;
     //if(gpio_num == RG_GPIO)
     	{
-		msg.source = 2;
+		msg.source = MSG_RG;
 		msg.val = gpio_get_level(RG_GPIO);
 		msg.vts.ts = esp_timer_get_time();
 		xQueueSendFromISR(westa_cmd_queue, &msg, NULL);
@@ -501,39 +445,7 @@ static void pth_poll(void *pvArgs)
 
 void register_westaop(void)
 	{
-	pgcal_t rgcal;
-	
-	pnorm_param_t param = {0, 0};
-	if(rw_rgcal(PARAM_READ, &rgcal) == ESP_OK)
-	//if(rw_params(PARAM_READ, PARAM_RGCAL, &rgcal) == ESP_OK)
-		{
-		ml_b = rgcal.mlb;
-		sq_cmp = rgcal.sqcmp;
-		}
-	else 
-		{
-		ml_b = DEFAULT_RGCAL;
-		sq_cmp = DEFAULT_SQCMP;
-		}
-	/*
-	pthfile_mutex = xSemaphoreCreateMutex();
-	if(!pthfile_mutex)
-		{
-		ESP_LOGE(TAG, "cannot create pthfile_mutex");
-		esp_restart();
-		}
-	*/
-	if(rw_pnorm(PARAM_READ, &param) == ESP_OK)
-	//if(rw_params(PARAM_READ, PARAM_PNORM, &param) == ESP_OK)
-		{
-		psl = param.psl;
-		hmp = param.hmp;
-		}
-	else
-		{
-		psl = DEFAULT_PSL;
-		hmp = DEFAULT_ELEVATION;
-		}
+	get_westa_nvsconf();
 
 	//ESP_ERROR_CHECK(i2c_master_init());
 	if(init_i2c(0) == ESP_OK)
@@ -617,111 +529,56 @@ static int bmp_init(i2c_master_dev_handle_t bmp_handle)
 		ESP_LOGI(TAG, "Cannot initialize i2c driver. Error = %d", res);
 	return res;
 	}
-		
-static int rw_pnorm(int rw, pnorm_param_t *param_val)
-	{
-	int ret = ESP_FAIL;
-	struct stat st;
-	char buf[40];
-	if(rw == PARAM_READ)
-		{
-		if (stat(BASE_PATH"/"PNORM_FILE, &st) != 0)
-			{
-			// file does no exists
-			((pnorm_param_t *)param_val)->hmp = DEFAULT_ELEVATION;
-			((pnorm_param_t *)param_val)->psl = DEFAULT_PSL;
-			ret = ESP_OK;
-			ESP_LOGI(TAG, "%s file not found. Taking default parameters", BASE_PATH"/"PNORM_FILE);
-			}
-		else
-			{
-			FILE *f = fopen(BASE_PATH"/"PNORM_FILE, "r");
-			if (f != NULL)
-				{
-				double p = 0, h = 0;
-				if(fgets(buf, 64, f))
-					{
-					sscanf(buf, "%lf %lf", &p, &h);
-					}
-				((pnorm_param_t *)param_val)->hmp = h;
-				((pnorm_param_t *)param_val)->psl = p;
-				fclose(f);
-				ret = ESP_OK;
-				}
-			else
-				ESP_LOGE(TAG, "Failed to open pnorm file for reading");
-			}
-		}
-	else if(rw == PARAM_WRITE)
-    	{
-   		FILE *f = fopen(BASE_PATH"/"PNORM_FILE, "w");
-		if (f == NULL)
-			ESP_LOGE(TAG, "Failed to create pnorm param file");
-		else
-			{
-			sprintf(buf, "%.3lf %.3lf\n", ((pnorm_param_t *)param_val)->psl, ((pnorm_param_t *)param_val)->hmp);
-			if(fputs(buf, f) >= 0)
-				ret = ESP_OK;
-			fclose(f);
-			}
-		}
-	return ret;
-	}
-			
-static int rw_rgcal(int rw, pgcal_t *param_val)
-	{
-	int ret = ESP_FAIL;
-	char buf[40];	
-	struct stat st;
-	if(rw == PARAM_READ)
-		{
-		if (stat(BASE_PATH"/"RGCAL_FILE, &st) != 0)
-			{
-			// file does no exists
-			((pgcal_t *)param_val)->mlb = DEFAULT_RGCAL;
-			((pgcal_t *)param_val)->sqcmp = DEFAULT_SQCMP;
-			ESP_LOGI(TAG, "%s file not found. Taking default parameters", BASE_PATH"/"RGCAL_FILE);
-			ret = ESP_OK;
-			}
-		else
-			{
-			FILE *f = fopen(BASE_PATH"/"RGCAL_FILE, "r");
-			if (f != NULL)
-				{
-				double c = 0;
-				int s = 0;
-				if(fgets(buf, 64, f))
-					{
-					sscanf(buf, "%lf %d", &c, &s);
-					((pgcal_t *)param_val)->mlb = c;
-					((pgcal_t *)param_val)->sqcmp = s;
-					}
-				fclose(f);
-				ret = ESP_OK;
-				}
-			else
-				{
-				ESP_LOGE(TAG, "Failed to open rgcal file for reading");
-				return ret;
-				}
-			}
-		}
-	else if(rw == PARAM_WRITE)
-		{
-		FILE *f = fopen(BASE_PATH"/"RGCAL_FILE, "w");
-		if (f == NULL)
-			{
-			ESP_LOGE(TAG, "Failed to create rgcal file");
-			}
-		else
-			{
-			sprintf(buf, "%.1lf %d\n", ((pgcal_t *)param_val)->mlb, ((pgcal_t *)param_val)->sqcmp);
-			if(fputs(buf, f) >= 0)
-				ret = ESP_OK;
-			fclose(f);
-			}
-		}
-	return ret;
-	}
-#endif
 
+static void get_westa_nvsconf()
+	{
+	int err;
+	nvs_handle handle;
+	int32_t val;
+	psl = DEFAULT_PSL; hmp = DEFAULT_ELEVATION; ml_b = DEFAULT_RGCAL;
+	sq_cmp = DEFAULT_SQCMP;
+	if((err = nvs_open(WESTANS, NVS_READWRITE, &handle)) == ESP_OK)
+		{
+		err = nvs_get_i32(handle, MLB, &val);
+		if(err == ESP_OK)
+			ml_b = val / 10.;
+		else
+			{
+			ESP_LOGI(TAG, "Error getting %s value. Taking default: %.1f (%s / %d)", MLB, ml_b, esp_err_to_name(err), err);
+			err = nvs_set_i32(handle, MLB, (int)(DEFAULT_RGCAL * 10.));
+			if(err == ESP_OK)
+				nvs_commit(handle);
+			}
+		err = nvs_get_i32(handle, ELEVATION, &val);
+		if(err == ESP_OK)
+			hmp = val / 10.;
+		else
+			{
+			ESP_LOGI(TAG, "Error getting %s value. Taking default: %.1f (%s / %d)", ELEVATION, hmp, esp_err_to_name(err), err);
+			err = nvs_set_i32(handle, ELEVATION, (int)(DEFAULT_ELEVATION * 10.));
+			if(err == ESP_OK)
+				nvs_commit(handle);
+			}
+		err = nvs_get_i32(handle, SEALEVELP, &val);
+		if(err == ESP_OK)
+			psl = val / 10.;
+		else
+			{
+			ESP_LOGI(TAG, "Error getting %s value. Taking default: %.1f (%s / %d)", SEALEVELP, psl, esp_err_to_name(err), err);
+			err = nvs_set_i32(handle, SEALEVELP, (int)(DEFAULT_PSL * 10.));
+			if(err == ESP_OK)
+				nvs_commit(handle);
+			}
+		err = nvs_get_i32(handle, FSQCM, &val);
+		if(err == ESP_OK)
+			sq_cmp = val;
+		else
+			{
+			ESP_LOGI(TAG, "Error getting %s value. Taking default: %d (%s / %d)", FSQCM, sq_cmp, esp_err_to_name(err), err);
+			err = nvs_set_i32(handle, FSQCM, DEFAULT_SQCMP);
+			if(err == ESP_OK)
+				nvs_commit(handle);
+			}
+		nvs_close(handle);
+		}
+	}			

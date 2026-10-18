@@ -27,15 +27,32 @@
 
  /** reading interval of pressure temp and humidity */
 #define PTH_POLL_INT				1800 	//30 mins
-//#define PTH_POLL_INT				10 	//30 sec
+
  /** default normal sea level pressure */
 #define DEFAULT_PSL					1013.25
+
  /** default measuring point elevationA */
 #define DEFAULT_ELEVATION			87.5
 
-/** default rg calibration ml/bucket*/
+/** default rg calibration ml/bucket (ml)*/
 #define DEFAULT_RGCAL				1.8
-#define DEFAULT_SQCMP				55
+/** default rg calibration funnel surface (sqcm)*/
+#define DEFAULT_SQCMP				165		//14.5cm dia
+
+
+#define MSG_TIMER		1
+#define MSG_RG			2
+
+/*
+ NVS configuration: namespace name and keys name
+*/
+#include <stdint.h>
+#define WESTANS				"westa"
+#define MLB					"ml-bucket"		
+#define FSQCM				"funnel-sqcm"
+#define ELEVATION			"elevation"
+#define SEALEVELP			"sea-level-press"
+
 
  /** Name of the file storing normal pressure calculation: <measuring point xx.xx> altitude <sea level pressure xxxx.xxx> */
 #define PNORM_FILE		"pnorm.txt"
@@ -46,18 +63,6 @@ typedef struct
 	double temperature;
 	} th_data_t;
 	
-typedef struct
-	{
-	double psl;
-	double hmp;
-	} pnorm_param_t;
-typedef struct
-	{
-	double mlb;
-	int sqcmp;
-	} pgcal_t;
-	
-//extern SemaphoreHandle_t pthfile_mutex;
 
 void register_westaop(void);
 /*
