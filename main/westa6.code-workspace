@@ -1,0 +1,27 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../esp32_common"
+		}
+	],
+	"settings": {
+		"cmake.autoSelectActiveFolder": false,
+		"cmake.options.advanced": {
+			"build": {
+				"statusBarVisibility": "inherit",
+				"inheritDefault": "hidden"
+			},
+			"launch": {
+				"statusBarVisibility": "inherit",
+				"inheritDefault": "hidden"
+			},
+			"debug": {
+				"statusBarVisibility": "inherit",
+				"inheritDefault": "hidden"
+			}
+		}
+	}
+}
