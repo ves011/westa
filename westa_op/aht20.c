@@ -11,7 +11,6 @@
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_log.h"
-//#include "driver/i2c.h"
 #include "driver/i2c_master.h"
 #include "esp_console.h"
 #include "argtable3/argtable3.h"
@@ -22,10 +21,8 @@
 #include "errno.h"
 #include "ctype.h"
 #include "esp_netif.h"
-//#include "esp_spi_flash.h"
 #include "esp_spiffs.h"
 #include "esp_vfs_dev.h"
-//#include "esp_vfs_fat.h"
 #include "driver/gptimer.h"
 #include "mqtt_ctrl.h"
 #include "common_defines.h"
@@ -33,9 +30,6 @@
 #include "external_defs.h"
 #include "westaop.h"
 #include "aht20.h"
-
-//#include "../../esp32_common/gpios.h"
-
 
 static const char *TAG = "AHT";
 
