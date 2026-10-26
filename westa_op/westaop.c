@@ -51,7 +51,7 @@ static QueueHandle_t westa_cmd_queue = NULL;
 static const char *TAG = "WESTA OP";
 
 static double psl, hmp, pnorm, ml_b;
-static int sq_cmp;
+static int sq_cmp, bucket_counter = 0;
 
 
 static i2c_master_dev_handle_t aht_handle;
@@ -312,6 +312,45 @@ int do_westaop(int argc, char **argv)
 				ESP_LOGI(TAG, "unknown key: %s", westaop_args.op->sval[0]);
 			}
 		}
+	else if(!strcmp(westaop_args.dst->sval[0], "state"))
+		{
+		time_t tm = time(NULL);
+		struct tm timeinfo;
+		char bufd[32], strpub[512];
+		bmp_data_t bmpdata0, bmpdata1;
+		th_data_t dhtdata, ahtdata;
+		localtime_r(&tm, &timeinfo);
+		strftime(bufd, sizeof(bufd), "%Y-%m-%dT%H:%M:%S", &timeinfo);
+		int resb0 = get_bmp_data(0, &bmpdata0);
+		int resb1 = get_bmp_data(1, &bmpdata1);
+		int resd = get_dht_data(&dhtdata);
+		int resa = get_aht_data(&ahtdata);
+		if(resb0 != BMP2_OK)
+			bmpdata0.temperature = bmpdata0.pressure = 0;
+		if(resb1 != BMP2_OK)
+			bmpdata1.temperature = bmpdata1.pressure = 0;
+		if(resd != ESP_OK)
+			dhtdata.humidity = dhtdata.temperature = 0;
+		if(resa != ESP_OK)
+			ahtdata.humidity = ahtdata.temperature = 0;
+		int mlmp = (ml_b * 10000 * bucket_counter) / sq_cmp;
+		ESP_LOGI(TAG, "\n measured data:\n \
+\tbmp0 : %8.2lf degC / %8.2lf mBar / %8.2lf mbar\n \
+\tbmp1 : %8.2lf degC / %8.2lf mBar / %8.2lf mbar\n \
+\taht  : %8.2lf degC / %8.2lf %\n \
+\tdht  : %8.2lf degC / %8.2lf %\n \
+\nml/mp: %8.2lf",
+			bmpdata0.temperature, bmpdata0.pressure, pnorm, 
+			bmpdata1.temperature, bmpdata1.pressure, 
+			ahtdata.temperature, ahtdata.humidity,
+			dhtdata.humidity, dhtdata.temperature, mlmp);
+		sprintf(strpub, "%s\1%.2lf\1%.2lf\1%.2lf\1%.2lf\1%.2lf\1%d\1%.2lf\1%.2lf\1%.2lf\1%.2lf\1",
+							bufd, bmpdata0.temperature, bmpdata0.pressure, pnorm, 
+							dhtdata.humidity, dhtdata.temperature, mlmp,
+							bmpdata1.temperature, bmpdata1.pressure, 
+							ahtdata.temperature, ahtdata.humidity);
+		publish_topic(TOPIC_STATE, strpub, 0, 0);
+		}
     else
     	{
     	ESP_LOGI(TAG, "Unknown operand: %s", westaop_args.dst->sval[0]);
@@ -384,7 +423,6 @@ static void pth_poll(void *pvArgs)
 	int resb0, resb1, resd, resa;
 	struct tm timeinfo = { 0 };
 	char bufd[40], strpub[200];
-	int bucket_counter = 0;
 	pnorm = psl * pow((1 - hmp/44330), 5.255);
 	westa_cmd_queue = xQueueCreate(3, sizeof(msg_t));
 	config_rg_gpio();
@@ -461,7 +499,7 @@ void register_westaop(void)
 			aht20_init(aht_handle);
 		}
 	dht_init();
-	westaop_args.dst = arg_str1(NULL, NULL, "<dest>", "bmp | dht | aht");
+	westaop_args.dst = arg_str1(NULL, NULL, "<dest>", "bmp[0|1] | dht | aht | nvs | state");
 	westaop_args.op = arg_str1(NULL, NULL, "<op>", "status | set | read");
 	westaop_args.os_mode = arg_int0(NULL, NULL, "<os_mode>", "over sampling mode");
 	westaop_args.filter = arg_int0(NULL, NULL, "<filter>", "filter coeffs");

@@ -21,6 +21,7 @@
 #define ENABLE_MQTT_FAIL_REBOOT		1
 #define MQTT_FAILATTEMPTS			10		//this means a rebbot is triggered if MQTT_FAILATTEMPTS in a row = 100 sec
 
+/*
 #define TEST_BUILD (1)
 #if(TEST_BUILD == 1)
 	#define WITH_CONSOLE
@@ -29,6 +30,7 @@
 #else
 	#define CTRL_DEV_ID					(1)
 #endif
+*/
 #define WITH_CONSOLE
 #define OTA_SUPPORT
 
@@ -49,9 +51,9 @@
 #define I2C_MASTER_SDA_IO_1     99    					/*!< GPIO number used for I2C master data  */
 #define RG_GPIO					7
 
-#define DEV_NAME					"Statia meteo"
+//#define DEV_NAME					"Statia meteo"
 #define PROMPT_STR 					"WESTA"
-#define PD_USER						"westa"
+//#define PD_USER						"westa"
 
 extern int controller_op_registered;
 
